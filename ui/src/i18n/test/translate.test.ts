@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStorageMock } from "../../test-helpers/storage.ts";
+import { ja } from "../locales/ja.ts";
 import { pt_BR } from "../locales/pt-BR.ts";
 import { zh_CN } from "../locales/zh-CN.ts";
 import { zh_TW } from "../locales/zh-TW.ts";
@@ -89,5 +90,6 @@ describe("i18n", () => {
     expect((pt_BR.common as { version?: string }).version).toBeTruthy();
     expect((zh_CN.common as { version?: string }).version).toBeTruthy();
     expect((zh_TW.common as { version?: string }).version).toBeTruthy();
+    expect((ja.common as { version?: string }).version).toBeTruthy();
   });
 });
