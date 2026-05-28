@@ -24,6 +24,7 @@ import {
 } from "./delivery-commit-hooks.js";
 import {
   ackDelivery,
+  deferDeliveryRecovery,
   failDelivery,
   loadPendingDelivery,
   loadPendingDeliveries,
@@ -338,6 +339,12 @@ export function isPermanentDeliveryError(error: string): boolean {
   return PERMANENT_ERROR_PATTERNS.some((re) => re.test(error));
 }
 
+function hasAmbiguousSendState(entry: QueuedDelivery): boolean {
+  return (
+    entry.recoveryState === "send_attempt_started" || entry.recoveryState === "unknown_after_send"
+  );
+}
+
 async function drainQueuedEntry(opts: {
   entry: QueuedDelivery;
   cfg: OpenClawConfig;
@@ -348,10 +355,7 @@ async function drainQueuedEntry(opts: {
   onFailed?: (entry: QueuedDelivery, errMsg: string) => void;
 }): Promise<"recovered" | "failed" | "moved-to-failed" | "already-gone"> {
   const { entry } = opts;
-  if (
-    entry.recoveryState === "send_attempt_started" ||
-    entry.recoveryState === "unknown_after_send"
-  ) {
+  if (hasAmbiguousSendState(entry)) {
     // A crash after platform send start cannot be blindly replayed; adapters
     // must reconcile whether the platform already committed the message.
     const reconciliation = await reconcileUnknownQueuedDelivery({
@@ -404,7 +408,18 @@ async function drainQueuedEntry(opts: {
       }
       opts.log.warn(`Delivery entry ${entry.id} ${errMsg}`);
       opts.onFailed?.(entry, errMsg);
-      if (reconciliation?.status === "unresolved" && reconciliation.retryable === true) {
+      if (reconciliation == null) {
+        try {
+          await deferDeliveryRecovery(entry.id, errMsg, opts.stateDir);
+          return "failed";
+        } catch (deferErr) {
+          if (getErrnoCode(deferErr) === "ENOENT") {
+            return "already-gone";
+          }
+        }
+        return "failed";
+      }
+      if (reconciliation.status === "unresolved" && reconciliation.retryable === true) {
         try {
           await failDelivery(entry.id, errMsg, opts.stateDir);
           return "failed";

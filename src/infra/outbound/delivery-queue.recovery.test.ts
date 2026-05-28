@@ -135,7 +135,7 @@ describe("delivery-queue recovery", () => {
     expect(entries[0]?.lastError).toBe("network down");
   });
 
-  it("moves entries abandoned after platform send may have started to failed without reconciliation", async () => {
+  it("keeps entries abandoned after platform send may have started pending without reconciliation", async () => {
     const id = await enqueueDelivery(
       { channel: "demo-channel-a", to: "+1", payloads: [{ text: "maybe sent" }] },
       tmpDir(),
@@ -157,12 +157,16 @@ describe("delivery-queue recovery", () => {
       skippedMaxRetries: 0,
       deferredBackoff: 0,
     });
-    expect(await loadPendingDeliveries(tmpDir())).toHaveLength(0);
-    expect(readOutboundQueueStatus(tmpDir(), id)).toBe("failed");
+    const entries = await loadPendingDeliveries(tmpDir());
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.id).toBe(id);
+    expect(entries[0]?.retryCount).toBe(0);
+    expect(entries[0]?.recoveryState).toBe("unknown_after_send");
+    expect(readOutboundQueueStatus(tmpDir(), id)).toBe("pending");
     expectMockMessageContaining(log.warn, "unknown_after_send");
   });
 
-  it("moves started entries without reconciliation to failed instead of blindly replaying", async () => {
+  it("keeps started entries without reconciliation pending instead of blindly replaying", async () => {
     const id = await enqueueDelivery(
       { channel: "demo-channel-a", to: "+1", payloads: [{ text: "not yet sent" }] },
       tmpDir(),
@@ -184,9 +188,70 @@ describe("delivery-queue recovery", () => {
       skippedMaxRetries: 0,
       deferredBackoff: 0,
     });
+    const entries = await loadPendingDeliveries(tmpDir());
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.id).toBe(id);
+    expect(entries[0]?.retryCount).toBe(0);
+    expect(entries[0]?.recoveryState).toBe("send_attempt_started");
+    expect(readOutboundQueueStatus(tmpDir(), id)).toBe("pending");
+    expectMockMessageContaining(log.warn, "refusing blind replay without adapter reconciliation");
+  });
+
+  it("does not exhaust retry budget while ambiguous entries await adapter reconciliation", async () => {
+    const id = await enqueueDelivery(
+      { channel: "demo-channel-a", to: "+1", payloads: [{ text: "maybe sent later" }] },
+      tmpDir(),
+    );
+    setQueuedEntryState(tmpDir(), id, {
+      retryCount: 0,
+      platformSendStartedAt: Date.now(),
+      recoveryState: "unknown_after_send",
+    });
+
+    const deliver = vi.fn().mockResolvedValue([]);
+    for (let i = 0; i < MAX_RETRIES + 1; i += 1) {
+      const { result } = await runRecovery({ deliver });
+      expect(result).toEqual({
+        recovered: 0,
+        failed: 1,
+        skippedMaxRetries: 0,
+        deferredBackoff: 0,
+      });
+    }
+
+    expect(deliver).not.toHaveBeenCalled();
+    const entries = await loadPendingDeliveries(tmpDir());
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.id).toBe(id);
+    expect(entries[0]?.retryCount).toBe(0);
+    expect(entries[0]?.recoveryState).toBe("unknown_after_send");
+    expect(readOutboundQueueStatus(tmpDir(), id)).toBe("pending");
+  });
+
+  it("moves max-retry ambiguous entries to failed when retry budget is exhausted", async () => {
+    const id = await enqueueDelivery(
+      { channel: "demo-channel-a", to: "+1", payloads: [{ text: "old maybe sent" }] },
+      tmpDir(),
+    );
+    setQueuedEntryState(tmpDir(), id, {
+      retryCount: MAX_RETRIES,
+      lastAttemptAt: Date.now() - 1_000_000,
+      platformSendStartedAt: Date.now(),
+      recoveryState: "unknown_after_send",
+    });
+
+    const deliver = vi.fn().mockResolvedValue([]);
+    const { result } = await runRecovery({ deliver });
+
+    expect(deliver).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      recovered: 0,
+      failed: 0,
+      skippedMaxRetries: 1,
+      deferredBackoff: 0,
+    });
     expect(await loadPendingDeliveries(tmpDir())).toHaveLength(0);
     expect(readOutboundQueueStatus(tmpDir(), id)).toBe("failed");
-    expectMockMessageContaining(log.warn, "refusing blind replay without adapter reconciliation");
   });
 
   it("replays started entries only after adapter proves they were not sent", async () => {
@@ -395,7 +460,7 @@ describe("delivery-queue recovery", () => {
     expect(entries[0]?.lastError).toContain("provider lookup timed out");
   });
 
-  it("does not reconcile unknown-after-send entries unless the adapter declares the capability", async () => {
+  it("keeps unknown-after-send entries pending unless the adapter declares the capability", async () => {
     const id = await enqueueDelivery(
       { channel: "demo-channel-a", to: "+1", payloads: [{ text: "hidden method" }] },
       tmpDir(),
@@ -419,8 +484,12 @@ describe("delivery-queue recovery", () => {
     expect(reconcileUnknownSend).not.toHaveBeenCalled();
     expect(deliver).not.toHaveBeenCalled();
     expect(result.failed).toBe(1);
-    expect(await loadPendingDeliveries(tmpDir())).toHaveLength(0);
-    expect(readOutboundQueueStatus(tmpDir(), id)).toBe("failed");
+    const entries = await loadPendingDeliveries(tmpDir());
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.id).toBe(id);
+    expect(entries[0]?.retryCount).toBe(0);
+    expect(entries[0]?.recoveryState).toBe("unknown_after_send");
+    expect(readOutboundQueueStatus(tmpDir(), id)).toBe("pending");
     expectMockMessageContaining(log.warn, "refusing blind replay without adapter reconciliation");
   });
 
@@ -483,7 +552,7 @@ describe("delivery-queue recovery", () => {
     expect(deliverInput.skipQueue).toBe(true);
   });
 
-  it("moves unknown-after-send entries to failed without replaying", async () => {
+  it("keeps unknown-after-send entries pending without replaying", async () => {
     const id = await enqueueDelivery(
       { channel: "demo-channel-a", to: "+1", payloads: [{ text: "a" }] },
       tmpDir(),
@@ -500,8 +569,12 @@ describe("delivery-queue recovery", () => {
       skippedMaxRetries: 0,
       deferredBackoff: 0,
     });
-    expect(await loadPendingDeliveries(tmpDir())).toHaveLength(0);
-    expect(readOutboundQueueStatus(tmpDir(), id)).toBe("failed");
+    const entries = await loadPendingDeliveries(tmpDir());
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.id).toBe(id);
+    expect(entries[0]?.retryCount).toBe(0);
+    expect(entries[0]?.recoveryState).toBe("unknown_after_send");
+    expect(readOutboundQueueStatus(tmpDir(), id)).toBe("pending");
     expectMockMessageContaining(log.warn, "refusing blind replay without adapter reconciliation");
   });
 
