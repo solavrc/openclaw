@@ -29,6 +29,7 @@ const ANDROID_DEVICE_COMMANDS = [
   "device.health",
   "device.apps",
 ];
+const GLASSES_DEVICE_COMMANDS = [...DEVICE_COMMANDS, "device.permissions", "device.health"];
 
 const CONTACTS_COMMANDS = ["contacts.search"];
 const CONTACTS_DANGEROUS_COMMANDS = ["contacts.add"];
@@ -104,6 +105,7 @@ const PLATFORM_DEFAULTS: Record<string, string[]> = {
     ...PHOTOS_COMMANDS,
     ...MOTION_COMMANDS,
   ],
+  "even-g2": [...GLASSES_DEVICE_COMMANDS],
   macos: [
     ...CAMERA_COMMANDS,
     ...LOCATION_COMMANDS,
@@ -128,7 +130,7 @@ const PLATFORM_DEFAULTS: Record<string, string[]> = {
   unknown: [...UNKNOWN_PLATFORM_COMMANDS],
 };
 
-type PlatformId = "ios" | "android" | "macos" | "windows" | "linux" | "unknown";
+type PlatformId = "ios" | "android" | "macos" | "windows" | "linux" | "even-g2" | "unknown";
 
 const CANONICAL_PLATFORM_IDS = new Set<Exclude<PlatformId, "unknown">>([
   "ios",
@@ -136,6 +138,7 @@ const CANONICAL_PLATFORM_IDS = new Set<Exclude<PlatformId, "unknown">>([
   "macos",
   "windows",
   "linux",
+  "even-g2",
 ]);
 
 const DEVICE_FAMILY_TOKEN_RULES: ReadonlyArray<{
@@ -147,6 +150,7 @@ const DEVICE_FAMILY_TOKEN_RULES: ReadonlyArray<{
   { id: "macos", tokens: ["mac"] },
   { id: "windows", tokens: ["windows"] },
   { id: "linux", tokens: ["linux"] },
+  { id: "even-g2", tokens: ["even g2", "eveng2", "g2", "glasses"] },
 ] as const;
 
 function resolvePlatformIdByExactMatch(value: string): Exclude<PlatformId, "unknown"> | undefined {
@@ -171,6 +175,8 @@ function platformMatchesDeviceFamily(
       return family === "windows";
     case "linux":
       return family === "linux";
+    case "even-g2":
+      return /^(?:even g2|eveng2|g2|glasses)$/.test(family);
   }
   return false;
 }

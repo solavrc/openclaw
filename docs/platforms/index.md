@@ -10,17 +10,19 @@ OpenClaw core is written in TypeScript. **Node is the recommended runtime**.
 Bun is not recommended for the Gateway — known issues with WhatsApp and
 Telegram channels; see [Bun (experimental)](/install/bun) for details.
 
-Companion apps exist for Windows Hub, macOS (menu bar app), and mobile nodes
-(iOS/Android). Linux companion apps are planned, but the Gateway is fully
-supported today. On Windows, choose Windows Hub for the desktop app, native
-PowerShell install for terminal-first use, or WSL2 for the most
-Linux-compatible Gateway runtime.
+Companion apps exist for Windows Hub, macOS (menu bar app), mobile nodes
+(iOS/Android), and Even G2 glasses nodes. Linux companion apps are planned, but
+the Gateway is fully supported today. On Windows, choose Windows Hub for the
+desktop app, native PowerShell install for terminal-first use, or WSL2 for the
+most Linux-compatible Gateway runtime.
 
 ## Choose your OS
 
 - macOS: [macOS](/platforms/macos)
 - iOS: [iOS](/platforms/ios)
 - Android: [Android](/platforms/android)
+- Even G2: install `OpenClaw Node` from Even Hub, then pair the `Even G2` node
+  with your Gateway.
 - Windows: [Windows](/platforms/windows)
 - Linux: [Linux](/platforms/linux)
 

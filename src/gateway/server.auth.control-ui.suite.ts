@@ -1335,8 +1335,19 @@ export function registerControlUiAndPairingSuite(): void {
         deviceFamily: "iPad",
       },
     },
+    {
+      name: "Even G2",
+      identityPrefix: "openclaw-bootstrap-even-g2-node-",
+      client: {
+        id: "openclaw-even-g2-node",
+        version: "2026.6.2",
+        platform: "even-g2",
+        mode: "node" as const,
+        deviceFamily: "Even G2",
+      },
+    },
   ])(
-    "qr setup code auto-approves $name clients when mobile metadata matches",
+    "qr setup code auto-approves $name clients when native metadata matches",
     async ({ client, identityPrefix }) => {
       const { getPairedDevice, listDevicePairing } = await import("../infra/device-pairing.js");
       const { identity, initial } = await connectSetupCodeBootstrapNode({
@@ -1389,8 +1400,8 @@ export function registerControlUiAndPairingSuite(): void {
 
   test.each([
     {
-      name: "mobile client id with mismatched platform metadata",
-      identityPrefix: "openclaw-bootstrap-mobile-spoof-",
+      name: "native client id with mismatched platform metadata",
+      identityPrefix: "openclaw-bootstrap-native-spoof-",
       client: {
         id: "openclaw-android",
         version: "2026.6.2",
@@ -1400,7 +1411,7 @@ export function registerControlUiAndPairingSuite(): void {
       },
     },
     {
-      name: "valid non-mobile client id with mobile metadata",
+      name: "valid non-native client id with native metadata",
       identityPrefix: "openclaw-bootstrap-node-host-spoof-",
       client: {
         id: "node-host",

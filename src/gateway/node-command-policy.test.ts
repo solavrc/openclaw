@@ -31,7 +31,7 @@ describe("gateway/node-command-policy", () => {
       pluginConfig: {},
       policy: {
         commands: ["canvas.snapshot", "canvas.present"],
-        defaultPlatforms: ["ios", "android", "macos", "windows", "unknown"],
+        defaultPlatforms: ["ios", "android", "macos", "windows", "even-g2", "unknown"],
         foregroundRestrictedOnIos: true,
         handle: (ctx) => ctx.invokeNode(),
       },
@@ -97,6 +97,37 @@ describe("gateway/node-command-policy", () => {
     expect(allowlist.has("canvas.snapshot")).toBe(false);
   });
 
+  it("keeps Even G2 defaults focused on glasses-safe device and talk commands", () => {
+    const allowlist = resolveNodeCommandAllowlist({} as OpenClawConfig, {
+      platform: "even-g2",
+      deviceFamily: "Even G2",
+      caps: ["device", "talk"],
+      commands: [
+        "device.status",
+        "device.permissions",
+        "device.health",
+        "talk.ptt.once",
+        "sms.search",
+        "contacts.search",
+        "notifications.list",
+        "camera.list",
+        "screen.snapshot",
+        "system.run",
+      ],
+    });
+
+    expect(allowlist.has("device.status")).toBe(true);
+    expect(allowlist.has("device.permissions")).toBe(true);
+    expect(allowlist.has("device.health")).toBe(true);
+    expect(allowlist.has("talk.ptt.once")).toBe(true);
+    expect(allowlist.has("sms.search")).toBe(false);
+    expect(allowlist.has("contacts.search")).toBe(false);
+    expect(allowlist.has("notifications.list")).toBe(false);
+    expect(allowlist.has("camera.list")).toBe(false);
+    expect(allowlist.has("screen.snapshot")).toBe(false);
+    expect(allowlist.has("system.run")).toBe(false);
+  });
+
   it("adds canvas commands from the active canvas plugin node policy", () => {
     installCanvasPluginDefaults();
 
@@ -107,6 +138,20 @@ describe("gateway/node-command-policy", () => {
 
     expect(allowlist.has("canvas.snapshot")).toBe(true);
     expect(allowlist.has("canvas.present")).toBe(true);
+  });
+
+  it("adds canvas plugin commands to Even G2 without adding phone-only commands", () => {
+    installCanvasPluginDefaults();
+
+    const allowlist = resolveNodeCommandAllowlist({} as OpenClawConfig, {
+      platform: "even-g2",
+      deviceFamily: "Even G2",
+    });
+
+    expect(allowlist.has("canvas.snapshot")).toBe(true);
+    expect(allowlist.has("canvas.present")).toBe(true);
+    expect(allowlist.has("contacts.search")).toBe(false);
+    expect(allowlist.has("notifications.list")).toBe(false);
   });
 
   it("does not grant host command defaults for platform prefix aliases", () => {

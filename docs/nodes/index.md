@@ -7,7 +7,7 @@ read_when:
 title: "Nodes"
 ---
 
-A **node** is a companion device (macOS/iOS/Android/headless) that connects to the Gateway **WebSocket** (same port as operators) with `role: "node"` and exposes a command surface (e.g. `canvas.*`, `camera.*`, `device.*`, `notifications.*`, `system.*`) via `node.invoke`. Protocol details: [Gateway protocol](/gateway/protocol).
+A **node** is a companion device (macOS/iOS/Android/headless/glasses) that connects to the Gateway **WebSocket** (same port as operators) with `role: "node"` and exposes a command surface (e.g. `canvas.*`, `camera.*`, `device.*`, `notifications.*`, `system.*`) via `node.invoke`. Protocol details: [Gateway protocol](/gateway/protocol).
 
 Legacy transport: [Bridge protocol](/gateway/bridge-protocol) (TCP JSONL;
 historical only for current nodes).
@@ -203,6 +203,10 @@ Node commands must pass two gates before they can be invoked:
 
 Windows and macOS companion nodes allow safe declared commands such as
 `canvas.*`, `camera.list`, `location.get`, and `screen.snapshot` by default.
+Even G2 glasses nodes use the `even-g2` platform policy: safe declared
+`device.*` status/health commands, Canvas plugin commands, and trusted
+push-to-talk commands are allowed, but phone-only contacts/SMS/notifications,
+camera capture, screen capture, and host exec commands are not default-enabled.
 Trusted nodes that advertise the `talk` capability or declare `talk.*` commands
 also allow declared push-to-talk commands (`talk.ptt.start`, `talk.ptt.stop`,
 `talk.ptt.cancel`, `talk.ptt.once`) by default, independent of platform label.
