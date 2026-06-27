@@ -116,6 +116,34 @@ export function getVoiceCallStreamingConfig(config: OpenClawConfig): {
   return getVoiceCallProviderConfig(config, "streaming");
 }
 
+function collectTalkTranscriptionProviderIds(
+  config: OpenClawConfig,
+  requestedProvider?: string,
+): string[] {
+  const streamingConfig = getVoiceCallStreamingConfig(config);
+  const requested = new Set<string>();
+  const explicitProvider = normalizeOptionalString(requestedProvider);
+  if (explicitProvider) {
+    requested.add(explicitProvider);
+  }
+  if (streamingConfig.provider) {
+    requested.add(streamingConfig.provider);
+  }
+  for (const providerId of Object.keys(streamingConfig.providers ?? {})) {
+    const normalized = normalizeOptionalString(providerId);
+    if (normalized) {
+      requested.add(normalized);
+    }
+  }
+  return [...requested];
+}
+
+export function listTalkTranscriptionProviders(config: OpenClawConfig, requestedProvider?: string) {
+  return listRealtimeTranscriptionProviders(config, {
+    requestedProviderIds: collectTalkTranscriptionProviderIds(config, requestedProvider),
+  });
+}
+
 type RealtimeProviderWithConfig<TConfig extends Record<string, unknown>> = VoiceModelProvider & {
   resolveConfig?: (ctx: { cfg: OpenClawConfig; rawConfig: TConfig }) => TConfig;
   isConfigured: (ctx: { cfg: OpenClawConfig; providerConfig: TConfig }) => boolean;
@@ -211,7 +239,7 @@ export function buildTalkTranscriptionConfig(config: OpenClawConfig, requestedPr
     config,
     provider,
     providerConfigs,
-    providers: listRealtimeTranscriptionProviders(config),
+    providers: listTalkTranscriptionProviders(config, requestedProvider),
   });
   return {
     provider: provider ?? voiceModelDefault?.provider,

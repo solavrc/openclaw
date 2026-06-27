@@ -712,7 +712,7 @@ describe("resolvePluginCapabilityProviders", () => {
     expectActiveRegistryLookup(["openai"]);
   });
 
-  it("loads a voice-call streaming provider missing from an active realtime transcription registry", () => {
+  it("loads a requested provider missing from an active realtime transcription registry", () => {
     const active = createEmptyPluginRegistry();
     active.realtimeTranscriptionProviders.push({
       pluginId: "openai",
@@ -764,20 +764,7 @@ describe("resolvePluginCapabilityProviders", () => {
 
     const providers = resolvePluginCapabilityProviders({
       key: "realtimeTranscriptionProviders",
-      cfg: {
-        plugins: {
-          entries: {
-            "voice-call": {
-              config: {
-                streaming: {
-                  provider: "xai",
-                  providers: { xai: {} },
-                },
-              },
-            },
-          },
-        },
-      } as OpenClawConfig,
+      requestedProviderIds: ["xai"],
     });
 
     expectResolvedCapabilityProviderIds(providers, ["openai", "xai"]);

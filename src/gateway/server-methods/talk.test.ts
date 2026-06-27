@@ -239,6 +239,9 @@ describe("talk.catalog handler", () => {
       } as never,
     });
 
+    expect(mocks.listRealtimeTranscriptionProviders).toHaveBeenCalledWith(expect.any(Object), {
+      requestedProviderIds: ["openai"],
+    });
     expect(respond).toHaveBeenCalledWith(
       true,
       {

@@ -334,28 +334,6 @@ function collectRequestedVoiceModelProviderIds(cfg: OpenClawConfig | undefined):
   return requested;
 }
 
-function collectRequestedRealtimeTranscriptionProviderIds(
-  cfg: OpenClawConfig | undefined,
-  options: { includeVoiceModel: boolean },
-): Set<string> {
-  const requested = new Set<string>();
-  if (options.includeVoiceModel) {
-    addModelConfigProviderIds(requested, cfg?.agents?.defaults?.voiceModel);
-  }
-  const voiceCallEntry = cfg?.plugins?.entries?.["voice-call"];
-  const voiceCallConfig =
-    typeof voiceCallEntry?.config === "object" && voiceCallEntry.config !== null
-      ? (voiceCallEntry.config as Record<string, unknown>)
-      : undefined;
-  const streaming =
-    typeof voiceCallConfig?.streaming === "object" && voiceCallConfig.streaming !== null
-      ? (voiceCallConfig.streaming as Record<string, unknown>)
-      : undefined;
-  addStringValue(requested, streaming?.provider);
-  addObjectKeys(requested, streaming?.providers);
-  return requested;
-}
-
 function addMediaModelProviders(target: Set<string>, value: unknown): void {
   if (!Array.isArray(value)) {
     return;
@@ -390,9 +368,6 @@ function collectRequestedCapabilityProviderIds(params: {
         includeVoiceModel: params.includeVoiceModel ?? false,
       });
     case "realtimeTranscriptionProviders":
-      return collectRequestedRealtimeTranscriptionProviderIds(params.cfg, {
-        includeVoiceModel: params.includeVoiceModel ?? false,
-      });
     case "realtimeVoiceProviders":
       return params.includeVoiceModel
         ? collectRequestedVoiceModelProviderIds(params.cfg)
@@ -406,6 +381,27 @@ function collectRequestedCapabilityProviderIds(params: {
 
 function nonEmptyRequestedProviders(requested: Set<string> | undefined): Set<string> | undefined {
   return requested && requested.size > 0 ? requested : undefined;
+}
+
+function collectExplicitRequestedProviderIds(values: Iterable<string> | undefined): Set<string> {
+  const requested = new Set<string>();
+  for (const value of values ?? []) {
+    addStringValue(requested, value);
+  }
+  return requested;
+}
+
+function mergeRequestedProviderIds(
+  left: Set<string> | undefined,
+  right: Set<string> | undefined,
+): Set<string> | undefined {
+  if (!left || left.size === 0) {
+    return nonEmptyRequestedProviders(right);
+  }
+  if (!right || right.size === 0) {
+    return nonEmptyRequestedProviders(new Set(left));
+  }
+  return new Set([...left, ...right]);
 }
 
 function shouldScopeCapabilityLoadToRequestedProviders(
@@ -612,6 +608,7 @@ function resolveCachedCapabilityProviderEntries<K extends CapabilityProviderRegi
 export function resolvePluginCapabilityProviders<K extends CapabilityProviderRegistryKey>(params: {
   key: K;
   cfg?: OpenClawConfig;
+  requestedProviderIds?: Iterable<string>;
 }): CapabilityProviderForKey<K>[] {
   if (shouldSkipCapabilityResolution(params)) {
     return [];
@@ -619,14 +616,20 @@ export function resolvePluginCapabilityProviders<K extends CapabilityProviderReg
 
   const activeRegistry = getLoadedRuntimePluginRegistry();
   const activeProviders = activeRegistry?.[params.key] ?? [];
+  const explicitRequestedProviders = nonEmptyRequestedProviders(
+    collectExplicitRequestedProviderIds(params.requestedProviderIds),
+  );
   const missingRequestedProviders =
     activeProviders.length > 0
       ? nonEmptyRequestedProviders(
-          collectRequestedCapabilityProviderIds({
-            key: params.key,
-            cfg: params.cfg,
-            includeVoiceModel: true,
-          }),
+          mergeRequestedProviderIds(
+            explicitRequestedProviders,
+            collectRequestedCapabilityProviderIds({
+              key: params.key,
+              cfg: params.cfg,
+              includeVoiceModel: true,
+            }),
+          ),
         )
       : undefined;
   if (activeProviders.length > 0 && params.key !== "memoryEmbeddingProviders") {
@@ -644,7 +647,10 @@ export function resolvePluginCapabilityProviders<K extends CapabilityProviderReg
     missingRequestedProviders ??
     (activeProviders.length === 0
       ? nonEmptyRequestedProviders(
-          collectRequestedCapabilityProviderIds({ key: params.key, cfg: params.cfg }),
+          mergeRequestedProviderIds(
+            explicitRequestedProviders,
+            collectRequestedCapabilityProviderIds({ key: params.key, cfg: params.cfg }),
+          ),
         )
       : undefined);
   const requestedProviderLoadScope =
