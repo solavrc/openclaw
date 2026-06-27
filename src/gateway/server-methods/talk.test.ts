@@ -239,9 +239,7 @@ describe("talk.catalog handler", () => {
       } as never,
     });
 
-    expect(mocks.listRealtimeTranscriptionProviders).toHaveBeenCalledWith(expect.any(Object), {
-      requestedProviderIds: ["openai"],
-    });
+    expect(mocks.listRealtimeTranscriptionProviders).toHaveBeenCalledWith(expect.any(Object));
     expect(respond).toHaveBeenCalledWith(
       true,
       {
@@ -306,7 +304,19 @@ describe("talk.catalog handler", () => {
     expect(responsePayload).not.toContain("live-key");
   });
 
-  it("reads scoped voice-call entries when requesting transcription providers", async () => {
+  it("keeps catalog transcription providers unscoped while reading scoped voice-call config", async () => {
+    mocks.listRealtimeTranscriptionProviders.mockReturnValue([
+      {
+        id: "openai",
+        label: "OpenAI Realtime Transcription",
+        isConfigured: vi.fn(() => true),
+      } as never,
+      {
+        id: "xai",
+        label: "xAI Realtime Transcription",
+        isConfigured: vi.fn(() => true),
+      } as never,
+    ]);
     const respond = vi.fn();
     await talkHandlers["talk.catalog"]({
       req: { type: "req", id: "1", method: "talk.catalog" },
@@ -333,10 +343,61 @@ describe("talk.catalog handler", () => {
       } as never,
     });
 
-    expect(mocks.listRealtimeTranscriptionProviders).toHaveBeenCalledWith(expect.any(Object), {
-      requestedProviderIds: ["xai"],
+    expect(mocks.listRealtimeTranscriptionProviders).toHaveBeenCalledWith(expect.any(Object));
+    expectRespondOk(respond, {
+      transcription: expect.objectContaining({
+        activeProvider: "xai",
+        providers: expect.arrayContaining([
+          expect.objectContaining({ id: "openai" }),
+          expect.objectContaining({ id: "xai" }),
+        ]),
+      }),
     });
-    expectRespondOk(respond);
+  });
+
+  it("does not read scoped @openclaw/voice-call realtime config for catalog active provider", async () => {
+    mocks.listRealtimeVoiceProviders.mockReturnValue([
+      {
+        id: "openai",
+        label: "OpenAI Realtime",
+        isConfigured: vi.fn(() => true),
+      } as never,
+    ]);
+    const respond = vi.fn();
+    await talkHandlers["talk.catalog"]({
+      req: { type: "req", id: "1", method: "talk.catalog" },
+      params: {},
+      client: { connect: { scopes: ["operator.read"] } } as never,
+      isWebchatConnect: () => false,
+      respond: respond as never,
+      context: {
+        getRuntimeConfig: () =>
+          ({
+            plugins: {
+              entries: {
+                "@openclaw/voice-call": {
+                  config: {
+                    realtime: {
+                      provider: "google",
+                      providers: { google: {} },
+                    },
+                  },
+                },
+              },
+            },
+          }) as OpenClawConfig,
+      } as never,
+    });
+
+    expectRespondOk(respond, {
+      realtime: {
+        providers: [
+          expect.objectContaining({
+            id: "openai",
+          }),
+        ],
+      },
+    });
   });
 });
 

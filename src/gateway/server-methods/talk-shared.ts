@@ -87,7 +87,9 @@ function getVoiceCallProviderConfig<TConfig extends Record<string, unknown>>(
   const entries = getRecord(plugins?.entries);
   const providers: Record<string, TConfig> = {};
   let provider: string | undefined;
-  for (const entryId of VOICE_CALL_PLUGIN_ENTRY_IDS) {
+  const entryIds =
+    sectionName === "streaming" ? VOICE_CALL_PLUGIN_ENTRY_IDS : (["voice-call"] as const);
+  for (const entryId of entryIds) {
     const voiceCall = getRecord(entries?.[entryId]);
     const pluginConfig = getRecord(voiceCall?.config);
     const section = getRecord(pluginConfig?.[sectionName]);
@@ -148,10 +150,8 @@ function collectTalkTranscriptionProviderIds(
   return [...requested];
 }
 
-export function listTalkTranscriptionProviders(config: OpenClawConfig, requestedProvider?: string) {
-  return listRealtimeTranscriptionProviders(config, {
-    requestedProviderIds: collectTalkTranscriptionProviderIds(config, requestedProvider),
-  });
+export function listTalkTranscriptionProviders(config: OpenClawConfig) {
+  return listRealtimeTranscriptionProviders(config);
 }
 
 type RealtimeProviderWithConfig<TConfig extends Record<string, unknown>> = VoiceModelProvider & {

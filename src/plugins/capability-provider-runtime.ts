@@ -476,6 +476,9 @@ function resolveRequestedCapabilityPluginIds(params: {
       cfg: params.cfg,
       providerId,
     });
+    if (resolution.runtimePluginIds.length === 0) {
+      return undefined;
+    }
     for (const pluginId of resolution.runtimePluginIds) {
       runtimePluginIds.add(pluginId);
     }
