@@ -334,6 +334,28 @@ function collectRequestedVoiceModelProviderIds(cfg: OpenClawConfig | undefined):
   return requested;
 }
 
+function collectRequestedRealtimeTranscriptionProviderIds(
+  cfg: OpenClawConfig | undefined,
+  options: { includeVoiceModel: boolean },
+): Set<string> {
+  const requested = new Set<string>();
+  if (options.includeVoiceModel) {
+    addModelConfigProviderIds(requested, cfg?.agents?.defaults?.voiceModel);
+  }
+  const voiceCallEntry = cfg?.plugins?.entries?.["voice-call"];
+  const voiceCallConfig =
+    typeof voiceCallEntry?.config === "object" && voiceCallEntry.config !== null
+      ? (voiceCallEntry.config as Record<string, unknown>)
+      : undefined;
+  const streaming =
+    typeof voiceCallConfig?.streaming === "object" && voiceCallConfig.streaming !== null
+      ? (voiceCallConfig.streaming as Record<string, unknown>)
+      : undefined;
+  addStringValue(requested, streaming?.provider);
+  addObjectKeys(requested, streaming?.providers);
+  return requested;
+}
+
 function addMediaModelProviders(target: Set<string>, value: unknown): void {
   if (!Array.isArray(value)) {
     return;
@@ -368,6 +390,9 @@ function collectRequestedCapabilityProviderIds(params: {
         includeVoiceModel: params.includeVoiceModel ?? false,
       });
     case "realtimeTranscriptionProviders":
+      return collectRequestedRealtimeTranscriptionProviderIds(params.cfg, {
+        includeVoiceModel: params.includeVoiceModel ?? false,
+      });
     case "realtimeVoiceProviders":
       return params.includeVoiceModel
         ? collectRequestedVoiceModelProviderIds(params.cfg)
