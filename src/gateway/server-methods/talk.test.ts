@@ -305,6 +305,39 @@ describe("talk.catalog handler", () => {
     expect(responsePayload).not.toContain("stt-key");
     expect(responsePayload).not.toContain("live-key");
   });
+
+  it("reads scoped voice-call entries when requesting transcription providers", async () => {
+    const respond = vi.fn();
+    await talkHandlers["talk.catalog"]({
+      req: { type: "req", id: "1", method: "talk.catalog" },
+      params: {},
+      client: { connect: { scopes: ["operator.read"] } } as never,
+      isWebchatConnect: () => false,
+      respond: respond as never,
+      context: {
+        getRuntimeConfig: () =>
+          ({
+            plugins: {
+              entries: {
+                "@openclaw/voice-call": {
+                  config: {
+                    streaming: {
+                      provider: "xai",
+                      providers: { xai: {} },
+                    },
+                  },
+                },
+              },
+            },
+          }) as OpenClawConfig,
+      } as never,
+    });
+
+    expect(mocks.listRealtimeTranscriptionProviders).toHaveBeenCalledWith(expect.any(Object), {
+      requestedProviderIds: ["xai"],
+    });
+    expectRespondOk(respond);
+  });
 });
 
 describe("talk.speak handler", () => {
@@ -893,6 +926,79 @@ describe("talk.session unified handlers", () => {
       transcriptionSessionId: "stt-unified-1",
       connId: "conn-1",
     });
+  });
+
+  it("carries requested transcription providers into unified session resolution", async () => {
+    const openaiProvider = {
+      id: "openai",
+      label: "OpenAI Realtime Transcription",
+      isConfigured: vi.fn(() => true),
+      createSession: vi.fn(),
+    };
+    const xaiProvider = {
+      id: "xai",
+      label: "xAI Realtime Transcription",
+      isConfigured: vi.fn(({ providerConfig }) => providerConfig.apiKey === "xai-key"),
+      createSession: vi.fn(),
+    };
+    mocks.listRealtimeTranscriptionProviders.mockImplementation(((
+      _config: unknown,
+      options?: { requestedProviderIds?: Iterable<string> },
+    ): unknown[] => {
+      const requested = new Set(options?.requestedProviderIds ?? []);
+      return requested.has("xai") ? [openaiProvider, xaiProvider] : [openaiProvider];
+    }) as never);
+    mocks.createTalkTranscriptionRelaySession.mockReturnValue({
+      provider: "xai",
+      mode: "transcription",
+      transport: "gateway-relay",
+      transcriptionSessionId: "stt-unified-xai",
+      audio: { inputEncoding: "g711_ulaw", inputSampleRateHz: 8000 },
+      expiresAt: 1_797_986_400,
+    });
+
+    const createRespond = vi.fn();
+    await talkHandlers["talk.session.create"]({
+      req: { type: "req", id: "1", method: "talk.session.create" },
+      params: { mode: "transcription" },
+      client: { connId: "conn-1" } as never,
+      isWebchatConnect: () => false,
+      respond: createRespond as never,
+      context: {
+        getRuntimeConfig: () =>
+          ({
+            plugins: {
+              entries: {
+                "@openclaw/voice-call": {
+                  config: {
+                    streaming: {
+                      provider: "xai",
+                      providers: { xai: { apiKey: "xai-key" } },
+                    },
+                  },
+                },
+              },
+            },
+          }) as OpenClawConfig,
+      } as never,
+    });
+
+    expectRespondOk(createRespond, {
+      sessionId: "stt-unified-xai",
+      transcriptionSessionId: "stt-unified-xai",
+      mode: "transcription",
+      transport: "gateway-relay",
+      brain: "none",
+    });
+    expect(mocks.listRealtimeTranscriptionProviders).toHaveBeenCalledWith(expect.any(Object), {
+      requestedProviderIds: ["xai"],
+    });
+    expect(mocks.createTalkTranscriptionRelaySession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: xaiProvider,
+        providerConfig: { apiKey: "xai-key" },
+      }),
+    );
   });
 
   it("creates and controls managed-room sessions through the unified API", async () => {
