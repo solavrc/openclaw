@@ -18,7 +18,6 @@ const mocks = vi.hoisted(() => ({
   synthesizeSpeech: vi.fn(),
   canonicalizeRealtimeVoiceProviderId: vi.fn((providerId: string | undefined) => providerId),
   listRealtimeVoiceProviders: vi.fn(() => []),
-  getRealtimeTranscriptionProvider: vi.fn(),
   listRealtimeTranscriptionProviders: vi.fn(() => []),
   resolveConfiguredRealtimeVoiceProvider: vi.fn(),
   createTalkRealtimeRelaySession: vi.fn(),
@@ -59,7 +58,6 @@ vi.mock("../../talk/provider-registry.js", () => ({
 }));
 
 vi.mock("../../realtime-transcription/provider-registry.js", () => ({
-  getRealtimeTranscriptionProvider: mocks.getRealtimeTranscriptionProvider,
   listRealtimeTranscriptionProviders: mocks.listRealtimeTranscriptionProviders,
 }));
 
@@ -160,7 +158,6 @@ describe("talk.catalog handler", () => {
     vi.clearAllMocks();
     mocks.listSpeechProviders.mockReturnValue([]);
     mocks.listRealtimeTranscriptionProviders.mockReturnValue([]);
-    mocks.getRealtimeTranscriptionProvider.mockReturnValue(undefined);
     mocks.listRealtimeVoiceProviders.mockReturnValue([]);
     mocks.getResolvedSpeechProviderConfig.mockReturnValue({});
     mocks.resolveTtsConfig.mockReturnValue({ timeoutMs: 30_000 });
@@ -359,18 +356,23 @@ describe("talk.catalog handler", () => {
   });
 
   it("adds configured transcription providers missing from a partial active catalog registry", async () => {
-    mocks.listRealtimeTranscriptionProviders.mockReturnValue([
-      {
-        id: "openai",
-        label: "OpenAI Realtime Transcription",
-        isConfigured: vi.fn(() => true),
-      } as never,
-    ]);
-    mocks.getRealtimeTranscriptionProvider.mockReturnValue({
+    const openaiProvider = {
+      id: "openai",
+      label: "OpenAI Realtime Transcription",
+      isConfigured: vi.fn(() => true),
+    };
+    const xaiProvider = {
       id: "xai",
       label: "xAI Realtime Transcription",
       isConfigured: vi.fn(() => true),
-    });
+    };
+    mocks.listRealtimeTranscriptionProviders.mockImplementation(((
+      _config: unknown,
+      options?: { requestedProviderIds?: Iterable<string> },
+    ): unknown[] => {
+      const requested = new Set(options?.requestedProviderIds ?? []);
+      return requested.has("xai") ? [openaiProvider, xaiProvider] : [openaiProvider];
+    }) as never);
     const respond = vi.fn();
     await talkHandlers["talk.catalog"]({
       req: { type: "req", id: "1", method: "talk.catalog" },
@@ -398,13 +400,74 @@ describe("talk.catalog handler", () => {
     });
 
     expect(mocks.listRealtimeTranscriptionProviders).toHaveBeenCalledWith(expect.any(Object));
-    expect(mocks.getRealtimeTranscriptionProvider).toHaveBeenCalledWith("xai", expect.any(Object));
+    expect(mocks.listRealtimeTranscriptionProviders).toHaveBeenCalledWith(expect.any(Object), {
+      requestedProviderIds: ["xai"],
+    });
     expectRespondOk(respond, {
       transcription: expect.objectContaining({
         activeProvider: "xai",
         providers: [
           expect.objectContaining({ id: "openai" }),
           expect.objectContaining({ id: "xai" }),
+        ],
+      }),
+    });
+  });
+
+  it("adds alias-configured transcription providers missing from a partial active catalog registry", async () => {
+    const xaiProvider = {
+      id: "xai",
+      label: "xAI Realtime Transcription",
+      isConfigured: vi.fn(() => true),
+    };
+    const openaiProvider = {
+      id: "openai",
+      aliases: ["openai-realtime"],
+      label: "OpenAI Realtime Transcription",
+      isConfigured: vi.fn(() => true),
+    };
+    mocks.listRealtimeTranscriptionProviders.mockImplementation(((
+      _config: unknown,
+      options?: { requestedProviderIds?: Iterable<string> },
+    ): unknown[] => {
+      const requested = new Set(options?.requestedProviderIds ?? []);
+      return requested.has("openai-realtime") ? [xaiProvider, openaiProvider] : [xaiProvider];
+    }) as never);
+    const respond = vi.fn();
+    await talkHandlers["talk.catalog"]({
+      req: { type: "req", id: "1", method: "talk.catalog" },
+      params: {},
+      client: { connect: { scopes: ["operator.read"] } } as never,
+      isWebchatConnect: () => false,
+      respond: respond as never,
+      context: {
+        getRuntimeConfig: () =>
+          ({
+            plugins: {
+              entries: {
+                "@openclaw/voice-call": {
+                  config: {
+                    streaming: {
+                      provider: "openai-realtime",
+                      providers: { "openai-realtime": {} },
+                    },
+                  },
+                },
+              },
+            },
+          }) as OpenClawConfig,
+      } as never,
+    });
+
+    expect(mocks.listRealtimeTranscriptionProviders).toHaveBeenCalledWith(expect.any(Object), {
+      requestedProviderIds: ["openai-realtime"],
+    });
+    expectRespondOk(respond, {
+      transcription: expect.objectContaining({
+        activeProvider: "openai-realtime",
+        providers: [
+          expect.objectContaining({ id: "xai" }),
+          expect.objectContaining({ id: "openai" }),
         ],
       }),
     });

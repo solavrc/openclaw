@@ -14,10 +14,7 @@ import {
   type VoiceModelProvider,
 } from "../../../packages/speech-core/voice-models.js";
 import type { OpenClawConfig } from "../../config/types.js";
-import {
-  getRealtimeTranscriptionProvider,
-  listRealtimeTranscriptionProviders,
-} from "../../realtime-transcription/provider-registry.js";
+import { listRealtimeTranscriptionProviders } from "../../realtime-transcription/provider-registry.js";
 import type { RealtimeTranscriptionProviderConfig } from "../../realtime-transcription/provider-types.js";
 import { REALTIME_VOICE_AGENT_CONSULT_TOOL_NAME } from "../../talk/agent-consult-tool.js";
 import { REALTIME_VOICE_AGENT_CONTROL_TOOL_NAME } from "../../talk/agent-run-control-shared.js";
@@ -167,10 +164,12 @@ export function listTalkTranscriptionProviders(config: OpenClawConfig) {
     addProvider(provider);
   }
   for (const providerId of collectTalkTranscriptionProviderIds(config)) {
-    if (providers.some((provider) => providerMatchesId(provider, providerId))) {
+    if ([...merged.values()].some((provider) => providerMatchesId(provider, providerId))) {
       continue;
     }
-    const provider = getRealtimeTranscriptionProvider(providerId, config);
+    const provider = listRealtimeTranscriptionProviders(config, {
+      requestedProviderIds: [providerId],
+    }).find((entry) => providerMatchesId(entry, providerId));
     if (provider) {
       addProvider(provider);
     }
