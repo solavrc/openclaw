@@ -161,6 +161,7 @@ describe("delivery-queue recovery", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]?.id).toBe(id);
     expect(entries[0]?.retryCount).toBe(0);
+    expect(entries[0]?.lastAttemptAt).toBeTypeOf("number");
     expect(entries[0]?.recoveryState).toBe("unknown_after_send");
     expect(readOutboundQueueStatus(tmpDir(), id)).toBe("pending");
     expectMockMessageContaining(log.warn, "unknown_after_send");
@@ -192,12 +193,15 @@ describe("delivery-queue recovery", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]?.id).toBe(id);
     expect(entries[0]?.retryCount).toBe(0);
+    expect(entries[0]?.lastAttemptAt).toBeTypeOf("number");
     expect(entries[0]?.recoveryState).toBe("send_attempt_started");
     expect(readOutboundQueueStatus(tmpDir(), id)).toBe("pending");
     expectMockMessageContaining(log.warn, "refusing blind replay without adapter reconciliation");
   });
 
   it("does not exhaust retry budget while ambiguous entries await adapter reconciliation", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     const id = await enqueueDelivery(
       { channel: "demo-channel-a", to: "+1", payloads: [{ text: "maybe sent later" }] },
       tmpDir(),
@@ -209,14 +213,71 @@ describe("delivery-queue recovery", () => {
     });
 
     const deliver = vi.fn().mockResolvedValue([]);
-    for (let i = 0; i < MAX_RETRIES + 1; i += 1) {
-      const { result } = await runRecovery({ deliver });
-      expect(result).toEqual({
+    try {
+      const firstRun = await runRecovery({ deliver });
+      expect(firstRun.result).toEqual({
         recovered: 0,
         failed: 1,
         skippedMaxRetries: 0,
         deferredBackoff: 0,
       });
+      for (let i = 0; i < MAX_RETRIES; i += 1) {
+        const { result } = await runRecovery({ deliver });
+        expect(result).toEqual({
+          recovered: 0,
+          failed: 0,
+          skippedMaxRetries: 0,
+          deferredBackoff: 1,
+        });
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(deliver).not.toHaveBeenCalled();
+    const entries = await loadPendingDeliveries(tmpDir());
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.id).toBe(id);
+    expect(entries[0]?.retryCount).toBe(0);
+    expect(entries[0]?.lastAttemptAt).toBe(Date.parse("2026-01-01T00:00:00.000Z"));
+    expect(entries[0]?.recoveryState).toBe("unknown_after_send");
+    expect(readOutboundQueueStatus(tmpDir(), id)).toBe("pending");
+  });
+
+  it("rechecks deferred ambiguous entries after the backoff elapses", async () => {
+    vi.useFakeTimers();
+    const start = new Date("2026-01-01T00:00:00.000Z");
+    vi.setSystemTime(start);
+    const id = await enqueueDelivery(
+      { channel: "demo-channel-a", to: "+1", payloads: [{ text: "maybe sent after backoff" }] },
+      tmpDir(),
+    );
+    setQueuedEntryState(tmpDir(), id, {
+      retryCount: 0,
+      platformSendStartedAt: start.getTime(),
+      recoveryState: "unknown_after_send",
+    });
+
+    const deliver = vi.fn().mockResolvedValue([]);
+    try {
+      const firstRun = await runRecovery({ deliver });
+      expect(firstRun.result).toEqual({
+        recovered: 0,
+        failed: 1,
+        skippedMaxRetries: 0,
+        deferredBackoff: 0,
+      });
+
+      vi.setSystemTime(new Date(start.getTime() + 5_001));
+      const secondRun = await runRecovery({ deliver });
+      expect(secondRun.result).toEqual({
+        recovered: 0,
+        failed: 1,
+        skippedMaxRetries: 0,
+        deferredBackoff: 0,
+      });
+    } finally {
+      vi.useRealTimers();
     }
 
     expect(deliver).not.toHaveBeenCalled();

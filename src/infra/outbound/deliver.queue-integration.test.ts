@@ -138,6 +138,7 @@ describe("deliverOutboundPayloads queue integration: mid-batch failure with send
     expect(afterDrain).toHaveLength(1);
     expect(afterDrain[0]?.recoveryState).toBe("unknown_after_send");
     expect(afterDrain[0]?.retryCount).toBe(beforeDrain[0]?.retryCount);
+    expect(afterDrain[0]?.lastAttemptAt).toBeTypeOf("number");
     expect(afterDrain[0]?.lastError).toContain(
       "refusing blind replay without adapter reconciliation",
     );

@@ -153,6 +153,7 @@ export async function deferDeliveryRecovery(
 ): Promise<void> {
   updateQueuedDelivery(id, stateDir, (entry) => ({
     ...entry,
+    lastAttemptAt: Date.now(),
     lastError: error,
   }));
 }
