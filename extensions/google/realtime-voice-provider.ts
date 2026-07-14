@@ -13,6 +13,7 @@ import type {
   LiveServerToolCall,
   Modality,
   RealtimeInputConfig,
+  Session,
   StartSensitivity,
   ThinkingConfig,
   TurnCoverage,
@@ -123,20 +124,6 @@ type GoogleRealtimeLiveConfig = {
 
 type GoogleRealtimeVoiceBridgeConfig = RealtimeVoiceBridgeCreateRequest & GoogleRealtimeLiveConfig;
 type GoogleLiveTranscription = NonNullable<LiveServerContent["inputTranscription"]>;
-
-type GoogleLiveSession = {
-  sendClientContent: (params: {
-    turns?: Array<{ role: string; parts: Array<{ text: string }> }>;
-    turnComplete?: boolean;
-  }) => void;
-  sendRealtimeInput: (params: {
-    audio?: { data: string; mimeType: string };
-    audioStreamEnd?: boolean;
-    text?: string;
-  }) => void;
-  sendToolResponse: (params: { functionResponses: FunctionResponse[] | FunctionResponse }) => void;
-  close: () => void;
-};
 
 function trimToUndefined(value: unknown): string | undefined {
   return normalizeOptionalString(value);
@@ -494,8 +481,9 @@ function formatGoogleLiveCloseEvent(
 
 class GoogleRealtimeVoiceBridge implements RealtimeVoiceBridge {
   readonly supportsToolResultContinuation: boolean;
+  readonly supportsToolResultSuppression = false;
 
-  private session: GoogleLiveSession | null = null;
+  private session: Session | null = null;
   private connected = false;
   private sessionConfigured = false;
   private intentionallyClosed = false;
@@ -542,7 +530,7 @@ class GoogleRealtimeVoiceBridge implements RealtimeVoiceBridge {
       },
     });
 
-    this.session = (await ai.live.connect({
+    this.session = await ai.live.connect({
       model: this.model,
       config: {
         ...buildGoogleLiveConnectConfig(this.config, this.model),
@@ -593,7 +581,7 @@ class GoogleRealtimeVoiceBridge implements RealtimeVoiceBridge {
           this.config.onClose?.("error");
         },
       },
-    })) as GoogleLiveSession;
+    });
     this.hasConnectedSession = true;
   }
 
@@ -721,7 +709,7 @@ class GoogleRealtimeVoiceBridge implements RealtimeVoiceBridge {
     }
   }
 
-  acknowledgeMark(): void {}
+  acknowledgeMark(_markName?: string): void {}
 
   close(): void {
     this.intentionallyClosed = true;
@@ -975,7 +963,6 @@ async function createGoogleRealtimeBrowserSession(
   if (!apiKey) {
     throw new Error("Google Gemini API key missing");
   }
-
   const model = req.model ?? config.model ?? GOOGLE_REALTIME_DEFAULT_MODEL;
   const voice = req.voice ?? config.voice ?? GOOGLE_REALTIME_DEFAULT_VOICE;
   const nowMs = Date.now();
@@ -995,6 +982,7 @@ async function createGoogleRealtimeBrowserSession(
     apiKey,
     httpOptions: {
       apiVersion: GOOGLE_REALTIME_BROWSER_API_VERSION,
+      timeout: 30_000,
     },
   });
   const token = await ai.authTokens.create({
